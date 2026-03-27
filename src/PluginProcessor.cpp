@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include <cmath>
+
 namespace
 {
 constexpr auto dryId = "dry";
@@ -13,6 +15,74 @@ constexpr auto lowCutHzId = "lowCutHz";
 constexpr auto lowDampRateId = "lowDampRate";
 constexpr auto highCutHzId = "highCutHz";
 constexpr auto highDampRateId = "highDampRate";
+
+juce::NormalisableRange<float> makeSkewedRange (float min, float max, float centre)
+{
+    juce::NormalisableRange<float> range (min, max);
+    range.setSkewForCentre (centre);
+    return range;
+}
+
+juce::String gainToText (float value)
+{
+    if (value <= 0.0f)
+        return "off";
+
+    const auto db = juce::Decibels::gainToDecibels (value);
+    return juce::String (db, 2) + " dB";
+}
+
+float textToGain (const juce::String& text)
+{
+    const auto lower = text.trim().toLowerCase();
+    if (lower == "off")
+        return 0.0f;
+
+    if (lower.containsIgnoreCase ("db"))
+        return juce::Decibels::decibelsToGain (text.getFloatValue());
+
+    return text.getFloatValue();
+}
+
+juce::String hzToText (float value)
+{
+    if (value >= 1000.0f)
+        return juce::String (value / 1000.0f, 2) + " kHz";
+
+    return juce::String (value, value < 100.0f ? 1 : 0) + " Hz";
+}
+
+float textToHz (const juce::String& text)
+{
+    const auto lower = text.toLowerCase();
+    const auto value = text.getFloatValue();
+    return lower.contains ("khz") ? value * 1000.0f : value;
+}
+
+juce::String secondsToText (float value)
+{
+    if (value < 0.1f)
+        return juce::String (value * 1000.0f, 1) + " ms";
+
+    return juce::String (value, value < 10.0f ? 2 : 1) + " s";
+}
+
+float textToSeconds (const juce::String& text)
+{
+    const auto lower = text.toLowerCase();
+    const auto value = text.getFloatValue();
+    return lower.contains ("ms") ? value * 0.001f : value;
+}
+
+juce::String ratioToPercentText (float value)
+{
+    return juce::String (value * 100.0f, 1) + "%";
+}
+
+float textToRatio (const juce::String& text)
+{
+    return text.getFloatValue() * 0.01f;
+}
 }
 
 //==============================================================================
@@ -194,16 +264,65 @@ juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::c
     using Param = juce::AudioParameterFloat;
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    params.push_back (std::make_unique<Param> (dryId, "Dry", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f));
-    params.push_back (std::make_unique<Param> (wetId, "Wet", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
-    params.push_back (std::make_unique<Param> (roomMsId, "Room (ms)", juce::NormalisableRange<float> (10.0f, 200.0f), 80.0f));
-    params.push_back (std::make_unique<Param> (rt20Id, "Decay (RT20 s)", juce::NormalisableRange<float> (0.01f, 30.0f, 0.0f, 0.35f), 1.0f));
-    params.push_back (std::make_unique<Param> (earlyId, "Early", juce::NormalisableRange<float> (0.0f, 2.5f), 1.5f));
-    params.push_back (std::make_unique<Param> (detuneId, "Detune", juce::NormalisableRange<float> (0.0f, 50.0f), 2.0f));
-    params.push_back (std::make_unique<Param> (lowCutHzId, "Low Cut (Hz)", juce::NormalisableRange<float> (10.0f, 500.0f, 0.0f, 0.4f), 80.0f));
-    params.push_back (std::make_unique<Param> (lowDampRateId, "Low Damp", juce::NormalisableRange<float> (1.0f, 10.0f), 1.5f));
-    params.push_back (std::make_unique<Param> (highCutHzId, "High Cut (Hz)", juce::NormalisableRange<float> (1000.0f, 20000.0f, 0.0f, 0.35f), 12000.0f));
-    params.push_back (std::make_unique<Param> (highDampRateId, "High Damp", juce::NormalisableRange<float> (1.0f, 10.0f), 2.5f));
+    params.push_back (std::make_unique<Param> (
+        dryId, "dry", makeSkewedRange (0.0f, 4.0f, 1.0f), 1.0f,
+        "dB", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return gainToText (v); },
+        [] (const juce::String& s) { return textToGain (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        wetId, "wet", makeSkewedRange (0.0f, 4.0f, 1.0f), juce::Decibels::decibelsToGain (-6.1f),
+        "dB", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return gainToText (v); },
+        [] (const juce::String& s) { return textToGain (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        roomMsId, "room", makeSkewedRange (10.0f, 200.0f, 100.0f), 80.0f,
+        "ms", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return juce::String (v, 1) + " ms"; },
+        [] (const juce::String& s) { return s.getFloatValue(); }));
+
+    params.push_back (std::make_unique<Param> (
+        rt20Id, "decay", makeSkewedRange (0.01f, 30.0f, 2.0f), 1.0f,
+        "s", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return secondsToText (v); },
+        [] (const juce::String& s) { return textToSeconds (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        earlyId, "early", makeSkewedRange (0.0f, 2.5f, 1.0f), 1.5f,
+        "%", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return ratioToPercentText (v); },
+        [] (const juce::String& s) { return textToRatio (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        detuneId, "detune", makeSkewedRange (0.0f, 50.0f, 5.0f), 2.0f,
+        "", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return juce::String (v, 2); },
+        [] (const juce::String& s) { return s.getFloatValue(); }));
+
+    params.push_back (std::make_unique<Param> (
+        lowCutHzId, "low cut", makeSkewedRange (10.0f, 500.0f, 80.0f), 80.0f,
+        "Hz", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return hzToText (v); },
+        [] (const juce::String& s) { return textToHz (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        lowDampRateId, "low damp", makeSkewedRange (1.0f, 10.0f, 2.0f), 1.5f,
+        "", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return juce::String (v, 2); },
+        [] (const juce::String& s) { return s.getFloatValue(); }));
+
+    params.push_back (std::make_unique<Param> (
+        highCutHzId, "high cut", makeSkewedRange (1000.0f, 20000.0f, 5000.0f), 12000.0f,
+        "Hz", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return hzToText (v); },
+        [] (const juce::String& s) { return textToHz (s); }));
+
+    params.push_back (std::make_unique<Param> (
+        highDampRateId, "high damp", makeSkewedRange (1.0f, 10.0f, 2.0f), 2.5f,
+        "", juce::AudioProcessorParameter::genericParameter,
+        [] (float v, int) { return juce::String (v, 2); },
+        [] (const juce::String& s) { return s.getFloatValue(); }));
 
     return { params.begin(), params.end() };
 }

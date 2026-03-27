@@ -74,7 +74,40 @@ void AudioPluginAudioProcessorEditor::setupControl (ParamControl& control,
 
     control.slider.setSliderStyle (juce::Slider::LinearHorizontal);
     control.slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 90, 22);
+
+    if (auto* parameter = processorRef.getAPVTS().getParameter (parameterId))
+    {
+        control.slider.textFromValueFunction = [parameter] (double)
+        {
+            return parameter->getCurrentValueAsText();
+        };
+
+        control.slider.valueFromTextFunction = [parameter] (const juce::String& textValue)
+        {
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+                return static_cast<double> (ranged->convertFrom0to1 (parameter->getValueForText (textValue)));
+
+            return static_cast<double> (parameter->getValueForText (textValue));
+        };
+    }
+
     addAndMakeVisible (control.slider);
 
     control.attachment = std::make_unique<SliderAttachment> (processorRef.getAPVTS(), parameterId, control.slider);
+
+    if (auto* parameter = processorRef.getAPVTS().getParameter (parameterId))
+    {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+        {
+            const auto defaultNormalised = ranged->getDefaultValue();
+            const auto defaultDenormalised = ranged->convertFrom0to1 (defaultNormalised);
+
+            const auto isNormalisedSlider = juce::approximatelyEqual (control.slider.getMinimum(), 0.0)
+                                         && juce::approximatelyEqual (control.slider.getMaximum(), 1.0);
+
+            control.slider.setDoubleClickReturnValue (true,
+                                                      isNormalisedSlider ? defaultNormalised
+                                                                         : defaultDenormalised);
+        }
+    }
 }
