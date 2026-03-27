@@ -1,3 +1,6 @@
 [submodule "include/JUCE"]
 	path = include/JUCE
 	url = https://github.com/juce-framework/JUCE
+[submodule "include/Signalsmith"]
+	path = include/Signalsmith
+	url = https://github.com/Signalsmith-Audio/basics
