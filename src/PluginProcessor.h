@@ -54,6 +54,7 @@ private:
     juce::AudioProcessorValueTreeState apvts;
     signalsmith::basics::ReverbFloat reverb;
     double cachedTailSeconds = 0.0;
+    juce::AudioBuffer<float> stereoBuffer;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioPluginAudioProcessor)

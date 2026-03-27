@@ -175,6 +175,7 @@ void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     reverb.configure (sampleRate, maxBlockSize, 2);
     reverb.reset();
     updateReverbParameters();
+    stereoBuffer.setSize (2, juce::jmax (1, samplesPerBlock));
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -189,11 +190,13 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
     juce::ignoreUnused (layouts);
     return true;
   #else
-        if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    auto out = layouts.getMainOutputChannelSet();
+
+    if (out != juce::AudioChannelSet::stereo() && out != juce::AudioChannelSet::mono())
         return false;
 
    #if ! JucePlugin_IsSynth
-    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+    if (layouts.getMainInputChannelSet() != out)
         return false;
    #endif
 
@@ -219,7 +222,7 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    if (totalNumInputChannels < 2 || totalNumOutputChannels < 2)
+    if (totalNumInputChannels < 1 || totalNumOutputChannels < 1)
     {
         buffer.clear();
         return;
@@ -227,8 +230,26 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     updateReverbParameters();
 
-    float* io[2] = { buffer.getWritePointer (0), buffer.getWritePointer (1) };
-    reverb.process (io, io, static_cast<size_t> (buffer.getNumSamples()));
+    const int numSamples = buffer.getNumSamples();
+    const bool isMono = (totalNumInputChannels == 1 && totalNumOutputChannels == 1);
+
+    if (isMono)
+    {
+        stereoBuffer.copyFrom (0, 0, buffer, 0, 0, numSamples);
+        stereoBuffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+
+        float* io[2] = { stereoBuffer.getWritePointer (0), stereoBuffer.getWritePointer (1) };
+        reverb.process (io, io, static_cast<size_t> (numSamples));
+
+        buffer.copyFrom (0, 0, stereoBuffer, 0, 0, numSamples);
+        buffer.addFrom  (0, 0, stereoBuffer, 1, 0, numSamples);
+        buffer.applyGain (0, 0, numSamples, 0.5f);
+    }
+    else
+    {
+        float* io[2] = { buffer.getWritePointer (0), buffer.getWritePointer (1) };
+        reverb.process (io, io, static_cast<size_t> (numSamples));
+    }
 }
 
 //==============================================================================
