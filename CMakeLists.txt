@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.22)
-set(PROJECT_NAME KICKSTART) # set project name with a variable
+cmake_minimum_required(VERSION 3.24)
+set(PROJECT_NAME SMIRVERB) # set project name with a variable
 project(${PROJECT_NAME} VERSION 0.0.1)
 add_subdirectory(include/JUCE)                    
+add_subdirectory(include/Signalsmith)
 
 # If you are building a VST2 or AAX plugin, CMake needs to be told where to find these SDKs on your
 # system. This setup should be done before calling `juce_add_plugin`.
@@ -26,10 +27,10 @@ juce_add_plugin(${PROJECT_NAME}
     # EDITOR_WANTS_KEYBOARD_FOCUS TRUE/FALSE    # Does the editor need keyboard focus?
     # COPY_PLUGIN_AFTER_BUILD TRUE/FALSE        # Should the plugin be installed to a default location after building?
     PLUGIN_MANUFACTURER_CODE JFCO               # A four-character manufacturer id with at least one upper-case character
-    PLUGIN_CODE Kstr                            # A unique four-character plugin id with exactly one upper-case character
+    PLUGIN_CODE Smrv                            # A unique four-character plugin id with exactly one upper-case character
                                                 # GarageBand 10.3 requires the first letter to be upper-case, and the remaining letters to be lower-case
     FORMATS AU VST3 Standalone                  # The formats to build. Other valid formats are: AAX Unity VST AU AUv3
-    PRODUCT_NAME "KICKSTART")        # The name of the final executable, which can differ from the target name
+    PRODUCT_NAME "SMIRVERB")        # The name of the final executable, which can differ from the target name
 
 # `juce_generate_juce_header` will create a JuceHeader.h for a given target, which will be generated
 # into your build tree. This should be included with `#include <JuceHeader.h>`. The include path for
@@ -82,6 +83,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         # AudioPluginData           # If we'd created a binary data target, we'd link to it here
         juce::juce_audio_utils
+        signalsmith-basics
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

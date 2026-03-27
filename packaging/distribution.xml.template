@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
-    <title>KICKSTART</title>
+    <title>SMIRVERB</title>
     <license file="LICENSE" />
     <options customize="never" require-scripts="false"/>
     <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
     
     <choices-outline>
-        <line choice="org.jaffco.kickstart.au.pkg"/>
-        <line choice="org.jaffco.kickstart.vst3.pkg"/>
-        <line choice="org.jaffco.kickstart.app.pkg"/>
+        <line choice="org.jaffco.smirverb.au.pkg"/>
+        <line choice="org.jaffco.smirverb.vst3.pkg"/>
+        <line choice="org.jaffco.smirverb.app.pkg"/>
     </choices-outline>
     
-    <choice id="org.jaffco.kickstart.au.pkg" title="Audio Unit">
-        <pkg-ref id="org.jaffco.kickstart.au.pkg"/>
+    <choice id="org.jaffco.smirverb.au.pkg" title="Audio Unit">
+        <pkg-ref id="org.jaffco.smirverb.au.pkg"/>
     </choice>
-    <choice id="org.jaffco.kickstart.vst3.pkg" title="VST3">
-        <pkg-ref id="org.jaffco.kickstart.vst3.pkg"/>
+    <choice id="org.jaffco.smirverb.vst3.pkg" title="VST3">
+        <pkg-ref id="org.jaffco.smirverb.vst3.pkg"/>
     </choice>
-    <choice id="org.jaffco.kickstart.app.pkg" title="Standalone Application">
-        <pkg-ref id="org.jaffco.kickstart.app.pkg"/>
+    <choice id="org.jaffco.smirverb.app.pkg" title="Standalone Application">
+        <pkg-ref id="org.jaffco.smirverb.app.pkg"/>
     </choice>
     
-    <pkg-ref id="org.jaffco.kickstart.au.pkg">KICKSTART.au.pkg</pkg-ref>
-    <pkg-ref id="org.jaffco.kickstart.vst3.pkg">KICKSTART.vst3.pkg</pkg-ref>
-    <pkg-ref id="org.jaffco.kickstart.app.pkg">KICKSTART.app.pkg</pkg-ref>
+    <pkg-ref id="org.jaffco.smirverb.au.pkg">SMIRVERB.au.pkg</pkg-ref>
+    <pkg-ref id="org.jaffco.smirverb.vst3.pkg">SMIRVERB.vst3.pkg</pkg-ref>
+    <pkg-ref id="org.jaffco.smirverb.app.pkg">SMIRVERB.app.pkg</pkg-ref>
 </installer-gui-script>

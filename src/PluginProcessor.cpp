@@ -1,6 +1,20 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+namespace
+{
+constexpr auto dryId = "dry";
+constexpr auto wetId = "wet";
+constexpr auto roomMsId = "roomMs";
+constexpr auto rt20Id = "rt20";
+constexpr auto earlyId = "early";
+constexpr auto detuneId = "detune";
+constexpr auto lowCutHzId = "lowCutHz";
+constexpr auto lowDampRateId = "lowDampRate";
+constexpr auto highCutHzId = "highCutHz";
+constexpr auto highDampRateId = "highDampRate";
+}
+
 //==============================================================================
 AudioPluginAudioProcessor::AudioPluginAudioProcessor()
      : AudioProcessor (BusesProperties()
@@ -11,6 +25,7 @@ AudioPluginAudioProcessor::AudioPluginAudioProcessor()
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
                        )
+         , apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
 }
 
@@ -53,7 +68,7 @@ bool AudioPluginAudioProcessor::isMidiEffect() const
 
 double AudioPluginAudioProcessor::getTailLengthSeconds() const
 {
-    return 0.0;
+    return cachedTailSeconds;
 }
 
 int AudioPluginAudioProcessor::getNumPrograms()
@@ -86,9 +101,10 @@ void AudioPluginAudioProcessor::changeProgramName (int index, const juce::String
 //==============================================================================
 void AudioPluginAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
-    juce::ignoreUnused (sampleRate, samplesPerBlock);
+    const auto maxBlockSize = static_cast<size_t> (juce::jmax (1, samplesPerBlock));
+    reverb.configure (sampleRate, maxBlockSize, 2);
+    reverb.reset();
+    updateReverbParameters();
 }
 
 void AudioPluginAudioProcessor::releaseResources()
@@ -103,15 +119,9 @@ bool AudioPluginAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
     juce::ignoreUnused (layouts);
     return true;
   #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    // Some plugin hosts, such as certain GarageBand versions, will only
-    // load plugins that support stereo bus layouts.
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
 
-    // This checks if the input layout matches the output layout
    #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
@@ -139,18 +149,16 @@ void AudioPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    if (totalNumInputChannels < 2 || totalNumOutputChannels < 2)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-        juce::ignoreUnused (channelData);
-        // ..do something to the data...
+        buffer.clear();
+        return;
     }
+
+    updateReverbParameters();
+
+    float* io[2] = { buffer.getWritePointer (0), buffer.getWritePointer (1) };
+    reverb.process (io, io, static_cast<size_t> (buffer.getNumSamples()));
 }
 
 //==============================================================================
@@ -167,17 +175,53 @@ juce::AudioProcessorEditor* AudioPluginAudioProcessor::createEditor()
 //==============================================================================
 void AudioPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
-    juce::ignoreUnused (destData);
+    auto state = apvts.copyState();
+    if (auto xml = state.createXml())
+        copyXmlToBinary (*xml, destData);
 }
 
 void AudioPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
-    juce::ignoreUnused (data, sizeInBytes);
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    }
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout AudioPluginAudioProcessor::createParameterLayout()
+{
+    using Param = juce::AudioParameterFloat;
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    params.push_back (std::make_unique<Param> (dryId, "Dry", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f));
+    params.push_back (std::make_unique<Param> (wetId, "Wet", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
+    params.push_back (std::make_unique<Param> (roomMsId, "Room (ms)", juce::NormalisableRange<float> (10.0f, 200.0f), 80.0f));
+    params.push_back (std::make_unique<Param> (rt20Id, "Decay (RT20 s)", juce::NormalisableRange<float> (0.01f, 30.0f, 0.0f, 0.35f), 1.0f));
+    params.push_back (std::make_unique<Param> (earlyId, "Early", juce::NormalisableRange<float> (0.0f, 2.5f), 1.5f));
+    params.push_back (std::make_unique<Param> (detuneId, "Detune", juce::NormalisableRange<float> (0.0f, 50.0f), 2.0f));
+    params.push_back (std::make_unique<Param> (lowCutHzId, "Low Cut (Hz)", juce::NormalisableRange<float> (10.0f, 500.0f, 0.0f, 0.4f), 80.0f));
+    params.push_back (std::make_unique<Param> (lowDampRateId, "Low Damp", juce::NormalisableRange<float> (1.0f, 10.0f), 1.5f));
+    params.push_back (std::make_unique<Param> (highCutHzId, "High Cut (Hz)", juce::NormalisableRange<float> (1000.0f, 20000.0f, 0.0f, 0.35f), 12000.0f));
+    params.push_back (std::make_unique<Param> (highDampRateId, "High Damp", juce::NormalisableRange<float> (1.0f, 10.0f), 2.5f));
+
+    return { params.begin(), params.end() };
+}
+
+void AudioPluginAudioProcessor::updateReverbParameters()
+{
+    reverb.dry = apvts.getRawParameterValue (dryId)->load();
+    reverb.wet = apvts.getRawParameterValue (wetId)->load();
+    reverb.roomMs = apvts.getRawParameterValue (roomMsId)->load();
+    reverb.rt20 = apvts.getRawParameterValue (rt20Id)->load();
+    reverb.early = apvts.getRawParameterValue (earlyId)->load();
+    reverb.detune = apvts.getRawParameterValue (detuneId)->load();
+    reverb.lowCutHz = apvts.getRawParameterValue (lowCutHzId)->load();
+    reverb.lowDampRate = apvts.getRawParameterValue (lowDampRateId)->load();
+    reverb.highCutHz = apvts.getRawParameterValue (highCutHzId)->load();
+    reverb.highDampRate = apvts.getRawParameterValue (highDampRateId)->load();
+
+    cachedTailSeconds = static_cast<double> (apvts.getRawParameterValue (rt20Id)->load()) * 3.0;
 }
 
 //==============================================================================

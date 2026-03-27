@@ -136,7 +136,7 @@ jobs:
           echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PRODUCT_NAME=$PRODUCT_NAME" >> $GITHUB_ENV
-          echo "BUNDLE_ID=org.jaffco.kickstart" >> $GITHUB_ENV
+          echo "BUNDLE_ID=org.jaffco.smirverb" >> $GITHUB_ENV
 
       - name: Set additional env vars for next steps
         run: |
@@ -145,7 +145,6 @@ jobs:
           echo "VST3_PATH=$ARTIFACTS_PATH/VST3/${{ env.PRODUCT_NAME }}.vst3" >> $GITHUB_ENV
           echo "AU_PATH=$ARTIFACTS_PATH/AU/${{ env.PRODUCT_NAME }}.component" >> $GITHUB_ENV
           echo "AUV3_PATH=$ARTIFACTS_PATH/AUv3/${{ env.PRODUCT_NAME }}.appex" >> $GITHUB_ENV
-          echo "CLAP_PATH=$ARTIFACTS_PATH/CLAP/${{ env.PRODUCT_NAME }}.clap" >> $GITHUB_ENV
           echo "STANDALONE_PATH=$ARTIFACTS_PATH/Standalone/${{ env.PRODUCT_NAME }}.app" >> $GITHUB_ENV
           echo "ARTIFACT_NAME=${{ env.PRODUCT_NAME }}-${{ env.VERSION }}-${{ runner.os }}" >> $GITHUB_ENV
 
@@ -210,27 +209,7 @@ jobs:
           # Each plugin must be code signed
           codesign --force --keychain ${{ steps.keychain.outputs.keychain-path }} -s "${{ secrets.DEVELOPER_ID_APPLICATION}}" -v "${{ env.VST3_PATH }}" --deep --strict --options=runtime --timestamp
           codesign --force --keychain ${{ steps.keychain.outputs.keychain-path }} -s "${{ secrets.DEVELOPER_ID_APPLICATION}}" -v "${{ env.AU_PATH }}" --deep --strict --options=runtime --timestamp
-          codesign --force --keychain ${{ steps.keychain.outputs.keychain-path }} -s "${{ secrets.DEVELOPER_ID_APPLICATION}}" -v "${{ env.CLAP_PATH }}" --deep --strict --options=runtime --timestamp
           codesign --force --keychain ${{ steps.keychain.outputs.keychain-path }} -s "${{ secrets.DEVELOPER_ID_APPLICATION}}" -v "${{ env.STANDALONE_PATH }}" --deep --strict --options=runtime --timestamp
-
-      - name: Add Custom Icons (macOS)
-        if: ${{ runner.os == 'macOS' && env.DEVELOPER_ID_APPLICATION != '' }}
-        run: |
-          # add the icns as its own icon resource (meta!)
-          sips -i packaging/pamplejuce.icns
-
-          # Grab the resource, put in tempfile
-          DeRez -only icns packaging/pamplejuce.icns > /tmp/icons
-
-          # Stuff the resource into the strange Icon? file's resource fork
-          Rez -a /tmp/icons -o "${{ env.VST3_PATH }}/Icon"$'\r'
-          Rez -a /tmp/icons -o "${{ env.AU_PATH }}/Icon"$'\r'
-          Rez -a /tmp/icons -o "${{ env.CLAP_PATH }}/Icon"$'\r'
-
-          # Set custom icon attribute
-          SetFile -a C "${{ env.VST3_PATH }}"
-          SetFile -a C "${{ env.AU_PATH }}"
-          SetFile -a C "${{ env.CLAP_PATH }}"
 
       - name: pkgbuild, Productbuild and Notarize
         if: ${{ runner.os == 'macOS' }}
@@ -265,7 +244,7 @@ jobs:
           cp LICENSE packaging/resources/
           
           cd packaging
-          envsubst < distribution.xml.template > distribution.xml
+          cp distribution.xml.template distribution.xml
           productbuild --resources ./resources --distribution distribution.xml $SIGN_FLAG "${{ env.ARTIFACT_NAME }}.pkg"
 
           if [ -n "$DEVELOPER_ID_INSTALLER" ]; then
@@ -337,4 +316,4 @@ jobs:
           files: |
             */*.exe
             */*.zip
-            */*.dmg
+            */*.pkg
